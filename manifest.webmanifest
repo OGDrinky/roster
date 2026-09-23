@@ -1,0 +1,15 @@
+{
+  "name": "PDY Tracker",
+  "short_name": "PDY",
+  "description": "Daily personnel duty status roster, synced through GitHub.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f4f1",
+  "theme_color": "#1f6f3f",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

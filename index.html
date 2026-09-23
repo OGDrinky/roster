@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f6f3f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="PDY">
+  <title>PDY Tracker</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+
+<!-- ============ Roster ============ -->
+<section id="view-main" class="view">
+  <header class="topbar">
+    <div class="title">
+      <h1>PDY Tracker</h1>
+      <div id="today" class="sub"></div>
+    </div>
+    <button id="btn-refresh" class="icon-btn" aria-label="Refresh from GitHub">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>
+    </button>
+    <button id="btn-settings" class="icon-btn" aria-label="Settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <div class="syncbar">
+    <div id="sync-text" class="sync-text"></div>
+    <button id="btn-push" class="push-btn"></button>
+  </div>
+
+  <div id="summary" class="summary"></div>
+  <ul id="list" class="list"></ul>
+  <div id="empty" class="empty" hidden></div>
+
+  <div class="list-foot">
+    <button id="btn-report" class="ghost-btn">Share status report</button>
+  </div>
+</section>
+
+<!-- ============ Status picker ============ -->
+<div id="backdrop" class="backdrop" hidden></div>
+<div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-name" hidden>
+  <div class="sheet-head">
+    <h2 id="sheet-name"></h2>
+    <button id="sheet-close" class="icon-btn" aria-label="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <input id="sheet-note" class="field" maxlength="80" autocomplete="off" placeholder="Note (optional), e.g. ALC until 10 OCT">
+  <div id="status-grid" class="status-grid"></div>
+  <div class="sheet-foot">
+    <span id="sheet-meta" class="muted"></span>
+    <button id="sheet-clear" class="link-btn">Clear status</button>
+  </div>
+</div>
+
+<!-- ============ Settings ============ -->
+<section id="view-settings" class="view" hidden>
+  <header class="topbar">
+    <button class="icon-btn back" aria-label="Back">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="title"><h1>Settings</h1></div>
+  </header>
+
+  <div class="panel">
+    <label class="lbl" for="set-name">Your name</label>
+    <input id="set-name" class="field" autocomplete="off" placeholder="e.g. SSG Frisbie">
+    <p class="hint">Shown next to every status you set.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Join your team</h3>
+    <p class="hint">Paste the setup code a teammate sent you.</p>
+    <div class="row-inline">
+      <input id="set-code" class="field" autocomplete="off" placeholder="PDY1.…">
+      <button id="btn-apply-code" class="primary-btn">Apply</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>GitHub roster repo</h3>
+    <label class="lbl" for="set-repo">Repo</label>
+    <input id="set-repo" class="field" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="owner/repo-name">
+    <label class="lbl" for="set-path">File</label>
+    <input id="set-path" class="field" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="roster.json">
+    <label class="lbl" for="set-token">Access token</label>
+    <div class="row-inline">
+      <input id="set-token" class="field" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…">
+      <button id="btn-show-token" class="ghost-btn">Show</button>
+    </div>
+    <button id="btn-test" class="primary-btn wide">Test connection</button>
+    <div id="test-result" class="test-result" hidden></div>
+  </div>
+
+  <div class="panel">
+    <h3>Invite teammates</h3>
+    <p class="hint">Copies a code with the repo and token. Send it only over a channel you trust.</p>
+    <button id="btn-copy-code" class="ghost-btn wide">Copy setup code</button>
+  </div>
+
+  <div class="panel">
+    <h3>Roster</h3>
+    <button id="btn-manage" class="ghost-btn wide">Add / rename / remove people</button>
+    <button id="btn-reset" class="danger-btn wide">Reset this phone</button>
+    <p class="hint">Reset clears the copy on this phone and reloads it from GitHub. Your settings stay.</p>
+  </div>
+</section>
+
+<!-- ============ Manage roster ============ -->
+<section id="view-manage" class="view" hidden>
+  <header class="topbar">
+    <button class="icon-btn back" aria-label="Back">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="title"><h1>Manage roster</h1><div id="manage-count" class="sub"></div></div>
+  </header>
+
+  <div class="panel">
+    <label class="lbl" for="add-names">Add people, one per line</label>
+    <textarea id="add-names" class="field" rows="4" placeholder="SGT Adams&#10;SPC Baker&#10;PFC Clark"></textarea>
+    <button id="btn-add" class="primary-btn wide">Add</button>
+  </div>
+
+  <ul id="manage-list" class="manage-list"></ul>
+  <p class="hint pad">Tap a name to edit it. Add, rename, and remove changes sync on your next Push.</p>
+</section>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+</body>
+</html>
