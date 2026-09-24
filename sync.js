@@ -12,7 +12,7 @@
 // Name edits and status edits carry separate timestamps so a rename by one user
 // never wipes out a status update made by another at the same time.
 
-export const STATUSES = ['PDY', 'School', 'Leave', 'Pass', 'Staff Duty', 'Recovery'];
+export const STATUSES = ['PDY', 'School', 'Leave', 'Pass', 'Staff Duty', 'Recovery', 'FTX'];
 
 export function emptyRoster() {
   return { version: 1, updatedAt: null, updatedBy: null, people: {} };
@@ -79,12 +79,31 @@ export function pendingIds(local, remote) {
   return Object.keys(local.people).filter(id => isPending(local, remote, id));
 }
 
-// Sort by name, ignoring a leading rank so "SGT Adams" sorts under A.
-const RANK = /^(PV[12]|PVT|PFC|SPC|SP4|CPL|SGT|SSG|SFC|MSG|1SG|SGM|CSM|WO1|CW[2-5]|2LT|1LT|CPT|MAJ|LTC|COL|BG|MG|LTG|GEN|LCPL|GYSGT|SSGT|TSGT|MSGT|AMN|A1C|SRA|PO[123]|CPO|ENS|LTJG|LT|CDR|CAPT|MR|MRS|MS|DR)\.?\s+/i;
-const sortKey = name => name.replace(RANK, '');
-export const byName = (a, b) =>
-  sortKey(a.name).localeCompare(sortKey(b.name), undefined, { sensitivity: 'base', numeric: true })
-  || a.name.localeCompare(b.name);
+// Sort by Army rank (senior first), then alphabetically by the rest of the name.
+// Names without a recognized rank (civilians, typos) go last.
+const RANKS = ['GEN', 'LTG', 'MG', 'BG', 'COL', 'LTC', 'MAJ', 'CPT', '1LT', '2LT',
+  'CW5', 'CW4', 'CW3', 'CW2', 'WO1',
+  'CSM', 'SGM', '1SG', 'MSG', 'SFC', 'SSG', 'SGT', 'CPL', 'SPC', 'PFC', 'PV2', 'PV1'];
+const RANK_ALIASES = { PVT: 'PV1' };
+const TITLES = ['MR', 'MRS', 'MS', 'DR', 'CIV'];
+
+function splitRank(name) {
+  const m = name.match(/^([A-Z0-9]+)\.?\s+(.+)$/i);
+  if (m) {
+    const token = m[1].toUpperCase();
+    const i = RANKS.indexOf(RANK_ALIASES[token] || token);
+    if (i >= 0) return { rank: i, rest: m[2] };
+    if (TITLES.includes(token)) return { rank: RANKS.length, rest: m[2] };
+  }
+  return { rank: RANKS.length, rest: name };
+}
+
+export const byName = (a, b) => {
+  const x = splitRank(a.name), y = splitRank(b.name);
+  return x.rank - y.rank
+    || x.rest.localeCompare(y.rest, undefined, { sensitivity: 'base', numeric: true })
+    || a.name.localeCompare(b.name);
+};
 
 // One human-readable line per changed person; used for commit messages and
 // to decide whether a push is needed at all.

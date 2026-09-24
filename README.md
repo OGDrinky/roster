@@ -1,7 +1,7 @@
 # PDY Tracker
 
 A phone app for tracking daily duty status for a small team. Each person on the roster is marked
-**PDY**, **School**, **Leave**, **Pass**, **Staff Duty**, or **Recovery**, with an optional short note.
+**PDY**, **School**, **Leave**, **Pass**, **Staff Duty**, **Recovery**, or **FTX**, with an optional short note.
 The shared "master roster" is a single `roster.json` file in a **private** GitHub repo.
 
 It's an installable web app (PWA): no app store, and it works on iPhone and Android.
@@ -15,7 +15,10 @@ It's an installable web app (PWA): no app store, and it works on iPhone and Andr
   the most recent status for each person wins. A rename and a status change to the same person
   both survive.
 - Statuses carry over to the next day but show faded with "as of Tue 22 SEP" until someone
-  re-confirms them. The **Needs update** chip lists everyone not updated today.
+  re-confirms them. The **Needs update** chip lists everyone not updated today, and after 0700
+  their names turn red.
+- The roster is sorted by rank (senior first), then alphabetically. Names without a recognized
+  Army rank (e.g. civilians) are listed last.
 - Every push is a GitHub commit such as `SSG Frisbie: SPC Baker: Pass (Til Monday)`, so the repo
   history is a full audit log.
 

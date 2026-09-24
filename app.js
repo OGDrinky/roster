@@ -4,6 +4,7 @@ import {
 } from './sync.js';
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
+const DEADLINE_HOUR = 7; // 0700 local time
 const KEYS = { settings: 'pdy.settings', local: 'pdy.local', remote: 'pdy.remote', lastSync: 'pdy.lastSync' };
 const CODE_PREFIX = 'PDY1.';
 const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
@@ -30,7 +31,7 @@ let filter = 'all';
 let editingId = null;
 let currentView = 'main';
 let mainScroll = 0;
-let renderedDay = '';
+let renderedKey = '';
 
 const saveData = () => { store(KEYS.local, local); store(KEYS.remote, remote); store(KEYS.lastSync, lastSync); };
 const saveSettings = () => store(KEYS.settings, settings);
@@ -63,6 +64,10 @@ function when(iso) {
 
 const activePeople = () => Object.values(local.people).filter(p => !p.deleted).sort(byName);
 const needsUpdate = p => !p.status || !isToday(p.statusAt);
+// Anyone not updated today turns red once the daily deadline passes.
+const pastDeadline = () => new Date().getHours() >= DEADLINE_HOUR;
+// Changes at midnight (new day) and at the deadline, so the list re-renders at both.
+const renderKey = () => `${new Date().toDateString()}|${pastDeadline()}`;
 
 let toastTimer;
 function toast(msg, bad = false) {
@@ -85,7 +90,7 @@ function requireName() {
 // ---------- main view ----------
 
 function render() {
-  renderedDay = new Date().toDateString();
+  renderedKey = renderKey();
   $('#today').textContent = `${DOW[new Date().getDay()]} ${milDate(new Date())}`;
   renderSync();
   renderSummary();
@@ -147,13 +152,14 @@ function renderSummary() {
 function statusBox(p) {
   const stale = p.status && !isToday(p.statusAt) ? ' stale' : '';
   if (!p.status) return '<span class="status-box unset">Set</span>';
-  if (p.status === 'PDY') return `<span class="status-box pdy${stale}" style="--c:${statusColor('PDY')}" aria-label="PDY">${CHECK_SVG}</span>`;
-  return `<span class="status-box${stale}" style="--c:${statusColor(p.status)}">${esc(p.status)}</span>`;
+  const icon = p.status === 'PDY' ? CHECK_SVG : '';
+  return `<span class="status-box${stale}" style="--c:${statusColor(p.status)}">${icon}${esc(p.status)}</span>`;
 }
 
 function rowHtml(p) {
   const pending = isPending(local, remote, p.id);
   const stale = p.status && !isToday(p.statusAt);
+  const overdue = needsUpdate(p) && pastDeadline();
   const meta = [];
   if (p.statusAt) {
     const d = new Date(p.statusAt);
@@ -162,7 +168,7 @@ function rowHtml(p) {
   if (pending) meta.push('not pushed');
   return `<li><button class="row" data-id="${esc(p.id)}">
     <div class="who">
-      <div class="name">${pending ? '<span class="dot"></span>' : ''}${esc(p.name)}</div>
+      <div class="name${overdue ? ' overdue' : ''}">${pending ? '<span class="dot"></span>' : ''}${esc(p.name)}</div>
       ${p.note ? `<div class="note">${esc(p.note)}</div>` : ''}
       ${meta.length ? `<div class="meta${stale ? ' stale' : ''}">${esc(meta.filter(Boolean).join(' · '))}</div>` : ''}
     </div>
@@ -553,7 +559,7 @@ $('#manage-list').addEventListener('click', e => {
 setInterval(() => { if (document.visibilityState === 'visible') pull({ quiet: true }); }, AUTO_REFRESH_MS);
 setInterval(() => {
   if (currentView !== 'main') return;
-  if (new Date().toDateString() !== renderedDay) render(); else renderSync();
+  if (renderKey() !== renderedKey) render(); else renderSync();
 }, 30 * 1000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
