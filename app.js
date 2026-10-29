@@ -6,6 +6,8 @@ import { createAccessFile, fetchAccessFile, openAccessFile } from './access.js';
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 const DEADLINE_HOUR = 7; // 0700 local time
+const AUTO_PUSH_DELAY_MS = 1200;
+const RETRY_MS = 30 * 1000;
 const KEYS = { settings: 'pdy.settings', local: 'pdy.local', remote: 'pdy.remote', lastSync: 'pdy.lastSync' };
 const CODE_PREFIX = 'PDY1.';
 const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
@@ -34,6 +36,8 @@ let filter = 'all';
 let editingId = null;
 let currentView = '';
 let teamFile = '';
+let pushTimer = null;
+let lastPushError = null;
 let mainScroll = 0;
 let renderedKey = '';
 
@@ -116,7 +120,7 @@ function renderSync() {
   else if (!lastSync) t.textContent = 'Not synced yet';
   else {
     let s = `Synced ${milTime(new Date(lastSync))} (${ago(lastSync)})`;
-    if (remote.updatedBy) s += `\nLast push: ${remote.updatedBy}, ${when(remote.updatedAt)}`;
+    if (remote.updatedBy) s += `\nLast saved by ${remote.updatedBy}, ${when(remote.updatedAt)}`;
     t.textContent = s;
   }
 
@@ -124,11 +128,13 @@ function renderSync() {
     btn.textContent = 'Set up sync';
     btn.classList.toggle('has-changes', pending > 0);
     btn.disabled = false;
-  } else {
-    btn.textContent = pending ? `Push ${pending}` : 'Up to date';
-    btn.classList.toggle('has-changes', pending > 0);
-    btn.disabled = busy || !pending;
+    return;
   }
+  // Sending happens on its own; the button is only for retrying after a failure.
+  const saving = pending > 0 && (busy || (pushTimer && !syncError));
+  btn.textContent = saving ? 'Saving…' : pending ? `${syncError ? 'Retry' : 'Send'} ${pending}` : 'Up to date';
+  btn.classList.toggle('has-changes', pending > 0 && !saving);
+  btn.disabled = saving || !pending;
 }
 
 function renderSummary() {
@@ -169,7 +175,7 @@ function rowHtml(p) {
     const d = new Date(p.statusAt);
     meta.push(stale ? `as of ${shortDay(d)}` : milTime(d), p.statusBy);
   }
-  if (pending) meta.push('not pushed');
+  if (pending) meta.push('not sent yet');
   return `<li><button class="row" data-id="${esc(p.id)}">
     <div class="who">
       <div class="name${overdue ? ' overdue' : ''}">${pending ? '<span class="dot"></span>' : ''}${esc(p.name)}</div>
@@ -239,7 +245,7 @@ function setStatus(status) {
   p.note = status ? $('#sheet-note').value.trim() : '';
   p.statusAt = new Date().toISOString();
   p.statusBy = settings.name.trim();
-  saveData();
+  saveEdit();
   closeSheet();
   render();
 }
@@ -268,27 +274,55 @@ async function pull({ quiet = false } = {}) {
   } finally {
     busy = false;
     render();
+    // e.g. the app was closed before an edit went out
+    if (!syncError && !pushTimer && pendingIds(local, remote).length) schedulePush();
   }
 }
 
-async function push() {
-  if (!isConfigured(settings)) { toast('Connect GitHub to share your roster'); openView('settings'); return; }
-  if (!requireName() || busy) return;
+// Every edit is sent to GitHub on its own shortly after it's made. A quick run of
+// edits goes up together; a failed send is retried every 30 seconds.
+function schedulePush(delay = AUTO_PUSH_DELAY_MS) {
+  clearTimeout(pushTimer);
+  pushTimer = null;
+  if (isConfigured(settings) && settings.name.trim() && pendingIds(local, remote).length) {
+    pushTimer = setTimeout(() => { pushTimer = null; push({ auto: true }); }, delay);
+  }
+  renderSync();
+}
+
+function saveEdit() {
+  saveData();
+  schedulePush();
+}
+
+async function push({ auto = false } = {}) {
+  clearTimeout(pushTimer);
+  pushTimer = null;
+  if (!isConfigured(settings)) { if (!auto) { toast('Connect GitHub to share your roster'); openView('settings'); } return; }
+  if (!auto && !requireName()) return;
+  if (busy) { schedulePush(); return; } // a refresh is running; send right after it
   busy = true;
   syncError = null;
   renderSync();
+  let ok = false;
   try {
     const res = await pushRoster(settings, local, settings.name.trim());
     remote = res.remote;
     local = mergeRosters(remote, local); // keeps any edits made while the push was in flight
     lastSync = new Date().toISOString();
     saveData();
-    toast(res.changes.length ? `Pushed ${plural(res.changes.length, 'change')}` : 'Already up to date');
+    ok = true;
+    lastPushError = null;
+    if (res.changes.length) toast('Saved');
+    else if (!auto) toast('Already up to date');
   } catch (e) {
-    syncFailed(e, false);
+    // Automatic retries only toast when the problem is new, not every 30 seconds.
+    syncFailed(e, auto && e.message === lastPushError);
+    lastPushError = e.message;
   } finally {
     busy = false;
     render();
+    if (pendingIds(local, remote).length) schedulePush(ok ? AUTO_PUSH_DELAY_MS : RETRY_MS);
   }
 }
 
@@ -366,8 +400,10 @@ function submitName(e) {
 
 function signOut() {
   const pending = pendingIds(local, remote).length;
-  const warn = pending ? `\n\n${plural(pending, 'change')} on this phone haven't been pushed and will be lost.` : '';
-  if (!confirm(`Sign out of PDY Tracker on this phone?${warn}`)) return;
+  const warn = pending ? `\n\n${plural(pending, 'change')} on this phone haven't been sent yet and will be lost.` : '';
+  if (!confirm(`Sign out of Instructor Perstat on this phone?${warn}`)) return;
+  clearTimeout(pushTimer);
+  pushTimer = null;
   local = emptyRoster();
   remote = emptyRoster();
   lastSync = null;
@@ -495,7 +531,7 @@ async function runTest() {
     out.textContent = (r.isPrivate
       ? '✓ Connected. '
       : '⚠ Connected, but this repo is PUBLIC, so anyone can read the roster. Make it private in the repo\'s GitHub settings. ')
-      + (r.fileExists ? `${settings.path} found.` : `${settings.path} will be created on your first Push.`);
+      + (r.fileExists ? `${settings.path} found.` : `${settings.path} will be created when you first save a change.`);
     $('#team-panel').hidden = false;
     syncError = null;
     pull({ quiet: true });
@@ -572,7 +608,7 @@ async function createTeamAccess() {
 
 function resetPhone() {
   const pending = pendingIds(local, remote).length;
-  const warn = pending ? `\n\n${plural(pending, 'change')} on this phone haven't been pushed and will be lost.` : '';
+  const warn = pending ? `\n\n${plural(pending, 'change')} on this phone haven't been sent yet and will be lost.` : '';
   if (!confirm(`Clear the roster stored on this phone and reload it from GitHub?${warn}`)) return;
   local = emptyRoster();
   remote = emptyRoster();
@@ -616,7 +652,7 @@ function addPeople() {
     added++;
   }
   if (!added && !dupes) return;
-  saveData();
+  saveEdit();
   $('#add-names').value = '';
   renderManage();
   toast(`Added ${plural(added, 'person').replace('persons', 'people')}${dupes ? `, skipped ${dupes} already on the roster` : ''}`);
@@ -629,7 +665,7 @@ function renamePerson(id, input) {
   if (!requireName()) { input.value = p.name; return; }
   p.name = name;
   touchRoster(p);
-  saveData();
+  saveEdit();
 }
 
 function removePerson(id) {
@@ -637,7 +673,7 @@ function removePerson(id) {
   if (!p || !requireName() || !confirm(`Remove ${p.name} from the roster?`)) return;
   p.deleted = true;
   touchRoster(p);
-  saveData();
+  saveEdit();
   renderManage();
 }
 
@@ -709,10 +745,12 @@ setInterval(() => {
   if (renderKey() !== renderedKey) render(); else renderSync();
 }, 30 * 1000);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
+  // Leaving the app: send a waiting edit now rather than after the delay.
+  if (document.visibilityState === 'hidden') { if (pushTimer && !syncError) push({ auto: true }); return; }
   if (currentView === 'main') render();
   if (!lastSync || Date.now() - new Date(lastSync) > 60 * 1000) pull({ quiet: true });
 });
+window.addEventListener('online', () => schedulePush());
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});

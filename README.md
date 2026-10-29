@@ -1,4 +1,4 @@
-# PDY Tracker
+# Instructor Perstat
 
 A phone app for tracking daily duty status for a small team. Each person on the roster is marked
 **PDY**, **School**, **Leave**, **Pass**, **Staff Duty**, **Recovery**, **FTX**, or **Other**, with an optional short note.
@@ -8,10 +8,12 @@ It's an installable web app (PWA): no app store, and it works on iPhone and Andr
 
 ## How it works
 
-- Every tap saves on your phone right away. **Push** sends your changes to GitHub.
+- Every change saves on your phone right away and is sent to GitHub about a second later, with
+  no button to press. A quick run of changes goes up together. If there's no signal, the app
+  keeps retrying every 30 seconds and when you reopen it; the **Retry** button sends right away.
 - The app pulls the master roster every 5 minutes while it's open, and whenever you reopen it.
   The refresh button pulls on demand.
-- If two people push around the same time, nothing is overwritten. Changes merge per person, and
+- If two people save around the same time, nothing is overwritten. Changes merge per person, and
   the most recent status for each person wins. A rename and a status change to the same person
   both survive.
 - Statuses carry over to the next day but show faded with "as of Tue 22 SEP" until someone
@@ -19,7 +21,7 @@ It's an installable web app (PWA): no app store, and it works on iPhone and Andr
   their names turn red.
 - The roster is sorted by rank (senior first), then alphabetically. Names without a recognized
   Army rank (e.g. civilians) are listed last.
-- Every push is a GitHub commit such as `SSG Frisbie: SPC Baker: Pass (Til Monday)`, so the repo
+- Every save is a GitHub commit such as `SSG Frisbie: SPC Baker: Pass (Til Monday)`, so the repo
   history is a full audit log.
 
 ## One-time setup (one person does this)
@@ -59,7 +61,7 @@ In the app: ⚙ **Settings**
 - **Repo**: `your-username/pdy-roster`
 - **Access token**: paste the token → **Test connection** (should say ✓ Connected)
 - **Add / rename / remove people**: paste all names, one per line → **Add**
-- Go back and tap **Push**
+- Go back. The roster saves to GitHub on its own.
 
 ### 6. Invite the other three
 Settings → **Copy setup code**, then send it over a channel you trust (it contains the token).
@@ -80,7 +82,8 @@ make a new one, create a new team access file, and people re-enter the password.
 ## Daily use
 1. Tap a person.
 2. Type a note if needed (e.g. `ALC until 10 OCT`), then tap a status. That saves it.
-3. Tap **Push** when you're done. The button shows how many changes haven't been pushed yet.
+3. That's it. It saves for everyone a second later ("Saved"). A person marked "not sent yet" is
+   still waiting for signal.
 
 Tap a summary chip to filter the list. Tap it again to show everyone.
 **Share status report** creates a PERSTAT-style text summary you can paste into a group chat.

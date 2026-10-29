@@ -1,6 +1,6 @@
 {
-  "name": "PDY Tracker",
-  "short_name": "PDY",
+  "name": "Instructor Perstat",
+  "short_name": "Perstat",
   "description": "Daily personnel duty status roster, synced through GitHub.",
   "start_url": "./",
   "scope": "./",
