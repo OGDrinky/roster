@@ -17,8 +17,33 @@
 </head>
 <body>
 
+<!-- ============ Sign in (team password, then name) ============ -->
+<section id="view-gate" class="view gate" hidden>
+  <div class="gate-card">
+    <img src="icons/icon.svg" alt="" class="gate-icon">
+    <h1>PDY Tracker</h1>
+
+    <form id="gate-pass">
+      <label class="lbl" for="gate-password">Team password</label>
+      <input id="gate-password" class="field" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false">
+      <button id="gate-pass-btn" class="primary-btn wide" type="submit">Enter</button>
+    </form>
+
+    <form id="gate-name" hidden>
+      <label class="lbl" for="gate-who">Who are you?</label>
+      <input id="gate-who" class="field" list="roster-names" autocomplete="off" placeholder="Rank and last name, e.g. SPC Baker">
+      <datalist id="roster-names"></datalist>
+      <p class="hint">Shown next to every update you make, so everyone can see who changed what.</p>
+      <button class="primary-btn wide" type="submit">Continue</button>
+    </form>
+
+    <p id="gate-error" class="gate-error" role="alert" hidden></p>
+    <button id="gate-admin" class="link-btn quiet">Instructor setup</button>
+  </div>
+</section>
+
 <!-- ============ Roster ============ -->
-<section id="view-main" class="view">
+<section id="view-main" class="view" hidden>
   <header class="topbar">
     <div class="title">
       <h1>PDY Tracker</h1>
@@ -78,7 +103,12 @@
     <p class="hint">Shown next to every status you set.</p>
   </div>
 
-  <div class="panel">
+  <div id="member-panel" class="panel" hidden>
+    <h3>Signed in with the team password</h3>
+    <button id="btn-signout" class="danger-btn wide">Sign out of this phone</button>
+  </div>
+
+  <div class="panel" data-admin>
     <h3>Join your team</h3>
     <p class="hint">Paste the setup code a teammate sent you.</p>
     <div class="row-inline">
@@ -87,7 +117,7 @@
     </div>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-admin>
     <h3>GitHub roster repo</h3>
     <label class="lbl" for="set-repo">Repo</label>
     <input id="set-repo" class="field" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="owner/repo-name">
@@ -102,13 +132,22 @@
     <div id="test-result" class="test-result" hidden></div>
   </div>
 
-  <div class="panel">
+  <div id="team-panel" class="panel" data-admin>
+    <h3>Team password</h3>
+    <p class="hint">Lets anyone with the link join by entering a password. They can see the roster and update anyone's status, but can't add or remove people.</p>
+    <label class="lbl" for="team-password">Password</label>
+    <input id="team-password" class="field" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button id="btn-team" class="primary-btn wide">Create team access file</button>
+    <div id="team-result" class="test-result" hidden></div>
+  </div>
+
+  <div class="panel" data-admin>
     <h3>Invite teammates</h3>
     <p class="hint">Copies a code with the repo and token. Send it only over a channel you trust.</p>
     <button id="btn-copy-code" class="ghost-btn wide">Copy setup code</button>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-admin>
     <h3>Roster</h3>
     <button id="btn-manage" class="ghost-btn wide">Add / rename / remove people</button>
     <button id="btn-reset" class="danger-btn wide">Reset this phone</button>

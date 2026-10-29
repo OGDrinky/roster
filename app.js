@@ -2,6 +2,7 @@ import {
   STATUSES, emptyRoster, newId, normalize, mergeRosters, isPending, pendingIds,
   byName, describeChanges, isConfigured, fetchRemote, pushRoster, testConnection,
 } from './sync.js';
+import { createAccessFile, fetchAccessFile, openAccessFile } from './access.js';
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 const DEADLINE_HOUR = 7; // 0700 local time
@@ -21,7 +22,9 @@ function store(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
-let settings = { name: '', owner: '', repo: '', path: 'roster.json', token: '', ...load(KEYS.settings, {}) };
+// member: joined with the team password (no token shown, no roster management).
+const BLANK_SETTINGS = { name: '', owner: '', repo: '', path: 'roster.json', token: '', member: false };
+let settings = { ...BLANK_SETTINGS, ...load(KEYS.settings, {}) };
 let local = normalize(load(KEYS.local, null));   // this phone's roster, including unpushed edits
 let remote = normalize(load(KEYS.remote, null)); // last roster seen on GitHub
 let lastSync = load(KEYS.lastSync, null);
@@ -29,7 +32,8 @@ let syncError = null;
 let busy = false;
 let filter = 'all';
 let editingId = null;
-let currentView = 'main';
+let currentView = '';
+let teamFile = '';
 let mainScroll = 0;
 let renderedKey = '';
 
@@ -91,7 +95,7 @@ function requireName() {
 
 function render() {
   renderedKey = renderKey();
-  $('#today').textContent = `${DOW[new Date().getDay()]} ${milDate(new Date())}`;
+  $('#today').textContent = `${DOW[new Date().getDay()]} ${milDate(new Date())}${settings.name ? ` · ${settings.name}` : ''}`;
   renderSync();
   renderSummary();
   renderList();
@@ -189,6 +193,8 @@ function renderList() {
     empty.innerHTML = `<p>Joining a team? Open Settings and paste the setup code a teammate sent you.<br><br>Starting fresh? Add your people, then connect GitHub.</p>
       <div class="row-inline"><button class="ghost-btn" style="flex:1" data-action="settings">Settings</button>
       <button class="primary-btn" style="flex:1" data-action="manage">Add people</button></div>`;
+  } else if (!people.length && settings.member) {
+    empty.innerHTML = `<p>The roster is empty. Ask an instructor to add people.</p>`;
   } else if (!people.length) {
     empty.innerHTML = `<p>The roster is empty.</p><button class="primary-btn" data-action="manage">Add people</button>`;
   } else if (!shown.length) {
@@ -258,8 +264,7 @@ async function pull({ quiet = false } = {}) {
     else if (incoming) toast('Roster loaded');
     else if (!quiet) toast('Up to date');
   } catch (e) {
-    syncError = e.message;
-    if (!quiet) toast(e.message, true);
+    syncFailed(e, quiet);
   } finally {
     busy = false;
     render();
@@ -280,12 +285,98 @@ async function push() {
     saveData();
     toast(res.changes.length ? `Pushed ${plural(res.changes.length, 'change')}` : 'Already up to date');
   } catch (e) {
-    syncError = e.message;
-    toast(e.message, true);
+    syncFailed(e, false);
   } finally {
     busy = false;
     render();
   }
+}
+
+function syncFailed(e, quiet) {
+  if (e.status === 401 && settings.member) { lostTeamAccess(); return; }
+  syncError = e.message;
+  if (!quiet) toast(e.message, true);
+}
+
+// The token was replaced (new team access file). Members re-enter the team
+// password; their name and any unpushed changes are kept.
+function lostTeamAccess() {
+  settings = { ...settings, token: '' };
+  saveSettings();
+  hideSheet();
+  showView('main');
+  gateError('Team access has changed. Enter the team password again.');
+}
+
+// ---------- sign in ----------
+
+const needsSignIn = () => !isConfigured(settings) || !settings.name.trim();
+
+function gateError(msg) {
+  $('#gate-error').textContent = msg;
+  $('#gate-error').hidden = !msg;
+}
+
+// Step 1: team password (unlocks the repo + token). Step 2: who you are.
+function fillGate() {
+  const step = isConfigured(settings) ? 'name' : 'pass';
+  $('#gate-pass').hidden = step !== 'pass';
+  $('#gate-name').hidden = step !== 'name';
+  $('#gate-admin').hidden = step !== 'pass';
+  gateError('');
+  if (step === 'name') {
+    $('#roster-names').innerHTML = activePeople().map(p => `<option value="${esc(p.name)}">`).join('');
+    $('#gate-who').value = settings.name;
+  }
+}
+
+async function submitPassword(e) {
+  e.preventDefault();
+  const btn = $('#gate-pass-btn');
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  gateError('');
+  try {
+    const res = await fetchAccessFile();
+    if (res.status === 'offline') { gateError('No connection. Try again when you have signal.'); return; }
+    if (res.status === 'missing') { gateError('Team access isn\'t set up yet. Ask an instructor.'); return; }
+    const cfg = await openAccessFile(res.file, $('#gate-password').value);
+    if (!cfg) { gateError('Wrong password.'); return; }
+    settings = { ...settings, ...cfg, member: true };
+    saveSettings();
+    $('#gate-password').value = '';
+    await pull({ quiet: true }); // loads the roster so people can pick their name
+    if (!isConfigured(settings)) return; // token rejected; lostTeamAccess() already explained
+    if (settings.name) showView('main'); else fillGate();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Enter';
+  }
+}
+
+function submitName(e) {
+  e.preventDefault();
+  const name = $('#gate-who').value.trim().replace(/\s+/g, ' ');
+  if (name.length < 2) { gateError('Enter your rank and name.'); return; }
+  settings = { ...settings, name };
+  saveSettings();
+  showView('main');
+  toast(`Signed in as ${name}`);
+}
+
+function signOut() {
+  const pending = pendingIds(local, remote).length;
+  const warn = pending ? `\n\n${plural(pending, 'change')} on this phone haven't been pushed and will be lost.` : '';
+  if (!confirm(`Sign out of PDY Tracker on this phone?${warn}`)) return;
+  local = emptyRoster();
+  remote = emptyRoster();
+  lastSync = null;
+  syncError = null;
+  saveData();
+  settings = { ...BLANK_SETTINGS };
+  saveSettings();
+  history.replaceState({ v: 'main' }, '');
+  showView('main');
 }
 
 // ---------- report ----------
@@ -321,15 +412,17 @@ async function shareReport() {
 // ---------- views ----------
 
 function showView(v) {
+  if (v === 'main' && needsSignIn()) v = 'gate';
   if (v !== currentView) {
     if (currentView === 'main') mainScroll = window.scrollY;
-    for (const name of ['main', 'settings', 'manage']) $(`#view-${name}`).hidden = name !== v;
+    for (const name of ['gate', 'main', 'settings', 'manage']) $(`#view-${name}`).hidden = name !== v;
     if (currentView === 'settings' && v === 'main' && isConfigured(settings)) pull({ quiet: true });
     currentView = v;
     if (v === 'settings') fillSettings();
     if (v === 'manage') renderManage();
     window.scrollTo(0, v === 'main' ? mainScroll : 0);
   }
+  if (v === 'gate') fillGate();
   if (v === 'main') render();
 }
 
@@ -352,16 +445,28 @@ function parseRepo(s) {
   return parts.length >= 2 ? { owner: parts[0], repo: parts[1] } : { owner: '', repo: '' };
 }
 
+// Phones that joined with the team password only see their name and Sign out;
+// the repo/token fields are never filled in for them.
 function fillSettings() {
+  const member = !!settings.member;
+  document.querySelectorAll('#view-settings [data-admin]').forEach(el => { el.hidden = member; });
+  $('#member-panel').hidden = !member;
+  $('#team-panel').hidden = member || !isConfigured(settings);
   $('#set-name').value = settings.name;
-  $('#set-repo').value = settings.owner && settings.repo ? `${settings.owner}/${settings.repo}` : '';
-  $('#set-path').value = settings.path || 'roster.json';
-  $('#set-token').value = settings.token;
+  $('#set-repo').value = !member && settings.owner && settings.repo ? `${settings.owner}/${settings.repo}` : '';
+  $('#set-path').value = member ? '' : settings.path || 'roster.json';
+  $('#set-token').value = member ? '' : settings.token;
   $('#set-code').value = '';
   $('#test-result').hidden = true;
+  $('#team-result').hidden = true;
 }
 
 function readSettings() {
+  if (settings.member) {
+    settings = { ...settings, name: $('#set-name').value.trim() };
+    saveSettings();
+    return;
+  }
   const { owner, repo } = parseRepo($('#set-repo').value);
   settings = {
     ...settings,
@@ -391,6 +496,7 @@ async function runTest() {
       ? '✓ Connected. '
       : '⚠ Connected, but this repo is PUBLIC, so anyone can read the roster. Make it private in the repo\'s GitHub settings. ')
       + (r.fileExists ? `${settings.path} found.` : `${settings.path} will be created on your first Push.`);
+    $('#team-panel').hidden = false;
     syncError = null;
     pull({ quiet: true });
   } catch (e) {
@@ -427,6 +533,41 @@ function applySetupCode() {
   fillSettings();
   $('#set-name').value = name;
   runTest();
+}
+
+// Where to save access.json in the app's own repo, when hosted on GitHub Pages.
+function accessFileLink(exists) {
+  const owner = location.hostname.match(/^([^.]+)\.github\.io$/i)?.[1];
+  const repo = location.pathname.split('/').filter(Boolean)[0];
+  if (!owner || !repo) return null;
+  return exists
+    ? `https://github.com/${owner}/${repo}/edit/main/access.json`
+    : `https://github.com/${owner}/${repo}/new/main?filename=access.json`;
+}
+
+async function createTeamAccess() {
+  readSettings();
+  const out = $('#team-result');
+  out.hidden = false;
+  out.className = 'test-result';
+  const password = $('#team-password').value;
+  if (password.trim().length < 4) { out.classList.add('bad'); out.textContent = 'Use at least 4 characters.'; return; }
+  if (!isConfigured(settings)) { out.classList.add('bad'); out.textContent = 'Connect the GitHub repo first.'; return; }
+  out.textContent = 'Encrypting…';
+  teamFile = await createAccessFile(settings, password);
+  const exists = (await fetchAccessFile()).status === 'ok';
+  const link = accessFileLink(exists);
+  // Copy happens on its own tap: phones only allow clipboard writes directly from a tap.
+  out.innerHTML = `
+    <p class="team-step">1. <button id="btn-team-copy" class="ghost-btn">Copy file contents</button></p>
+    <p class="team-step">2. ${link
+      ? `<a class="ghost-btn link-as-btn" href="${esc(link)}" target="_blank" rel="noopener">Open GitHub</a>`
+      : 'Save it as <b>access.json</b> next to index.html in the app\'s repo.'}</p>
+    <p class="team-step">3. ${exists ? 'Select everything in the file and replace it with what you copied' : 'Paste it into the file'},
+      then tap <b>Commit changes</b>. The password works about a minute later.</p>`;
+  $('#btn-team-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(teamFile); toast('Copied'); } catch { prompt('Copy this:', teamFile); }
+  });
 }
 
 function resetPhone() {
@@ -543,6 +684,12 @@ $('#btn-copy-code').addEventListener('click', copySetupCode);
 $('#btn-apply-code').addEventListener('click', applySetupCode);
 $('#btn-manage').addEventListener('click', () => openView('manage'));
 $('#btn-reset').addEventListener('click', resetPhone);
+$('#btn-team').addEventListener('click', createTeamAccess);
+$('#btn-signout').addEventListener('click', signOut);
+
+$('#gate-pass').addEventListener('submit', submitPassword);
+$('#gate-name').addEventListener('submit', submitName);
+$('#gate-admin').addEventListener('click', () => openView('settings'));
 
 $('#btn-add').addEventListener('click', addPeople);
 $('#manage-list').addEventListener('change', e => {
@@ -572,5 +719,5 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 
 history.replaceState({ v: 'main' }, '');
-render();
+showView('main'); // goes to sign-in instead if this phone isn't set up
 pull({ quiet: true });

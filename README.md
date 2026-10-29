@@ -1,7 +1,7 @@
 # PDY Tracker
 
 A phone app for tracking daily duty status for a small team. Each person on the roster is marked
-**PDY**, **School**, **Leave**, **Pass**, **Staff Duty**, **Recovery**, or **FTX**, with an optional short note.
+**PDY**, **School**, **Leave**, **Pass**, **Staff Duty**, **Recovery**, **FTX**, or **Other**, with an optional short note.
 The shared "master roster" is a single `roster.json` file in a **private** GitHub repo.
 
 It's an installable web app (PWA): no app store, and it works on iPhone and Android.
@@ -66,6 +66,17 @@ Settings → **Copy setup code**, then send it over a channel you trust (it cont
 Each teammate installs the app (step 4), opens Settings, enters their name, pastes the code, and
 taps **Apply**. The roster loads automatically.
 
+### 7. Let personnel sign in with a team password
+On an instructor phone: Settings → **Team password** → type the password → **Create team access
+file** → **Copy file contents** → **Open GitHub** → paste → **Commit changes**. About a minute
+later, anyone with the link can open the app, enter the password (not case-sensitive), then enter
+their rank and name. That name is stamped on every update they make.
+
+Phones that join this way can see the roster and update anyone's status. They can't add or
+remove people, and they never see the token. To change the password, create the file again and
+replace the contents of `access.json`. To lock everyone out, delete the token on GitHub; when you
+make a new one, create a new team access file, and people re-enter the password.
+
 ## Daily use
 1. Tap a person.
 2. Type a note if needed (e.g. `ALC until 10 OCT`), then tap a status. That saves it.
@@ -80,6 +91,11 @@ Tap a summary chip to filter the list. Tap it again to show everyone.
   GitHub, create a new one, and send a new setup code.
 - Everyone shares one token, so GitHub shows every commit under the token owner's account. The
   app records who made each change (the name in Settings) in the data and in each commit message.
+  Names are self-entered, so they show who *says* they made a change; they aren't verified.
+- The team access file is public but encrypted with the team password. A common word as the password
+  keeps out people who only have the link, not a determined attacker. Anyone with the password
+  could, with some technical effort, pull the token out of the app and read or write the roster
+  repo directly.
 - Keep notes short and non-sensitive (no SSNs or medical details), and follow your unit's
   policy on storing personnel information in commercial cloud services.
 
@@ -89,5 +105,6 @@ Tap a summary chip to filter the list. Tap it again to show everyone.
 | `index.html` | Page layout: roster, status picker, settings, roster management |
 | `app.js` | UI, local saving, auto-refresh, report |
 | `sync.js` | Data model, merge logic, GitHub API |
+| `access.js` | Team password: creates and opens the encrypted `access.json` |
 | `styles.css` | Styling (follows the phone's light/dark mode) |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Makes it installable and able to open offline |

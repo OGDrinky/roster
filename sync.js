@@ -12,7 +12,7 @@
 // Name edits and status edits carry separate timestamps so a rename by one user
 // never wipes out a status update made by another at the same time.
 
-export const STATUSES = ['PDY', 'School', 'Leave', 'Pass', 'Staff Duty', 'Recovery', 'FTX'];
+export const STATUSES = ['PDY', 'School', 'Leave', 'Pass', 'Staff Duty', 'Recovery', 'FTX', 'Other'];
 
 export function emptyRoster() {
   return { version: 1, updatedAt: null, updatedBy: null, people: {} };

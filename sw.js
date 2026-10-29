@@ -1,7 +1,7 @@
 // Network-first cache for the app shell: always loads the latest version when
 // online, still opens when offline. GitHub API calls are never intercepted.
-const CACHE = 'pdy-shell-v2';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'sync.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon.svg'];
+const CACHE = 'pdy-shell-v3';
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'sync.js', 'access.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
